@@ -71,20 +71,13 @@ static struct platform_device hs_device = {
 	},
 };
 
-static unsigned int keypad_row_gpios[] = {
-	32, 33, 36
-};
-#if defined(CONFIG_MACH_MSM7X27_THUNDERC_SPRINT)
-static unsigned int keypad_col_gpios[] = { 32, 33, 34 };
-#else
-static unsigned int keypad_col_gpios[] = {37, 38};
-#endif
+static unsigned int keypad_row_gpios[] = { 32, 33, 34 };
+static unsigned int keypad_col_gpios[] = { 38, 37,36 };
 #define KEYMAP_INDEX(row, col) ((row)*ARRAY_SIZE(keypad_col_gpios) + (col))
 
-#if defined(CONFIG_MACH_MSM7X27_THUNDERC_SPRINT)
 static const unsigned short keypad_keymap_thunder[9] = {
-    [KEYMAP_INDEX(0, 0)] = KEY_MENU,
-    [KEYMAP_INDEX(0, 1)] = KEY_HOME,
+    [KEYMAP_INDEX(0, 0)] = KEY_HOME, // reverse these two keys for LS670
+    [KEYMAP_INDEX(0, 1)] = KEY_MENU, // instead of VM670
 	[KEYMAP_INDEX(0, 2)] = KEY_VOLUMEUP,
 	[KEYMAP_INDEX(1, 0)] = KEY_SEARCH,
 	[KEYMAP_INDEX(1, 1)] = KEY_BACK,
@@ -93,66 +86,6 @@ static const unsigned short keypad_keymap_thunder[9] = {
 	[KEYMAP_INDEX(2, 1)] = KEY_CAMERAFOCUS,
 	[KEYMAP_INDEX(2, 2)] = KEY_CHAT,
 };
-#else
-static const unsigned short keypad_keymap_thunder[][8] = {
-	[LGE_REV_B] = {
-		[KEYMAP_INDEX(0, 0)] = KEY_MENU,
-		[KEYMAP_INDEX(0, 1)] = KEY_SEARCH,
-		[KEYMAP_INDEX(1, 0)] = KEY_HOME,
-		[KEYMAP_INDEX(1, 1)] = KEY_BACK,
-		[KEYMAP_INDEX(2, 0)] = KEY_VOLUMEDOWN,
-		[KEYMAP_INDEX(2, 1)] = KEY_VOLUMEUP,
-	},
-	[LGE_REV_C] = {
-		[KEYMAP_INDEX(0, 0)] = KEY_HOME,
-		[KEYMAP_INDEX(0, 1)] = KEY_SEARCH,
-		[KEYMAP_INDEX(1, 0)] = KEY_BACK,
-		[KEYMAP_INDEX(1, 1)] = KEY_MENU,
-		[KEYMAP_INDEX(2, 0)] = KEY_VOLUMEDOWN,
-		[KEYMAP_INDEX(2, 1)] = KEY_VOLUMEUP,
-	},
-	[LGE_REV_D] = {
-		[KEYMAP_INDEX(0, 0)] = KEY_HOME,
-		[KEYMAP_INDEX(0, 1)] = KEY_SEARCH,
-		[KEYMAP_INDEX(1, 0)] = KEY_BACK,
-		[KEYMAP_INDEX(1, 1)] = KEY_MENU,
-		[KEYMAP_INDEX(2, 0)] = KEY_VOLUMEDOWN,
-		[KEYMAP_INDEX(2, 1)] = KEY_VOLUMEUP,
-	},
-	[LGE_REV_E] = {
-		[KEYMAP_INDEX(0, 0)] = KEY_HOME,
-		[KEYMAP_INDEX(0, 1)] = KEY_SEARCH,
-		[KEYMAP_INDEX(1, 0)] = KEY_BACK,
-		[KEYMAP_INDEX(1, 1)] = KEY_MENU,
-		[KEYMAP_INDEX(2, 0)] = KEY_VOLUMEDOWN,
-		[KEYMAP_INDEX(2, 1)] = KEY_VOLUMEUP,
-	},
-	[LGE_REV_F] = {
-		[KEYMAP_INDEX(0, 0)] = KEY_HOME,
-		[KEYMAP_INDEX(0, 1)] = KEY_SEARCH,
-		[KEYMAP_INDEX(1, 0)] = KEY_BACK,
-		[KEYMAP_INDEX(1, 1)] = KEY_MENU,
-		[KEYMAP_INDEX(2, 0)] = KEY_VOLUMEDOWN,
-		[KEYMAP_INDEX(2, 1)] = KEY_VOLUMEUP,
-	},
-	[LGE_REV_10] = {
-		[KEYMAP_INDEX(0, 0)] = KEY_HOME,
-		[KEYMAP_INDEX(0, 1)] = KEY_SEARCH,
-		[KEYMAP_INDEX(1, 0)] = KEY_BACK,
-		[KEYMAP_INDEX(1, 1)] = KEY_MENU,
-		[KEYMAP_INDEX(2, 0)] = KEY_VOLUMEDOWN,
-		[KEYMAP_INDEX(2, 1)] = KEY_VOLUMEUP,
-	},
-	[LGE_REV_11] = {
-		[KEYMAP_INDEX(0, 0)] = KEY_HOME,
-		[KEYMAP_INDEX(0, 1)] = KEY_SEARCH,
-		[KEYMAP_INDEX(1, 0)] = KEY_BACK,
-		[KEYMAP_INDEX(1, 1)] = KEY_MENU,
-		[KEYMAP_INDEX(2, 0)] = KEY_VOLUMEDOWN,
-		[KEYMAP_INDEX(2, 1)] = KEY_VOLUMEUP,
-	},
-};
-#endif
 
 int thunderc_matrix_info_wrapper(struct gpio_event_input_devs *input_dev, struct gpio_event_info *info, void **data, int func)
 {
@@ -182,7 +115,7 @@ static int thunderc_gpio_matrix_power(
 
 static struct gpio_event_matrix_info thunder_keypad_matrix_info = {
 	.info.func	= thunderc_matrix_info_wrapper,
-	.keymap		= NULL,
+	.keymap		= keypad_keymap_thunder,
 	.output_gpios	= keypad_row_gpios,
 	.input_gpios	= keypad_col_gpios,
 	.noutputs	= ARRAY_SIZE(keypad_row_gpios),
@@ -194,11 +127,7 @@ static struct gpio_event_matrix_info thunder_keypad_matrix_info = {
 
 static void __init thunder_select_keymap(void)
 {
-	#if defined(CONFIG_MACH_MSM7X27_THUNDERC_SPRINT)
 	thunder_keypad_matrix_info.keymap = keypad_keymap_thunder;
-	#else
-	thunder_keypad_matrix_info.keymap = keypad_keymap_thunder[lge_bd_rev];
-	#endif
 	return;
 }
 
@@ -207,7 +136,7 @@ static struct gpio_event_info *thunder_keypad_info[] = {
 };
 
 static struct gpio_event_platform_data thunder_keypad_data = {
-	.name		= "thunder_keypad",
+	.name		= "thunderc_keypad",
 	.info		= thunder_keypad_info,
 	.info_count	= ARRAY_SIZE(thunder_keypad_info),
 	.power          = thunderc_gpio_matrix_power,
@@ -230,9 +159,9 @@ static int thunderc_reset_keys_up[] = {
 static struct keyreset_platform_data thunderc_reset_keys_pdata = {
 	.keys_up = thunderc_reset_keys_up,
 	.keys_down = {
-		//KEY_BACK,
+		KEY_BACK,
 		KEY_VOLUMEDOWN,
-		KEY_SEARCH,
+		KEY_MENU,
 		0
 	},
 };
@@ -246,7 +175,7 @@ struct platform_device thunderc_reset_keys_device = {
 static struct platform_device *thunderc_input_devices[] __initdata = {
 	&hs_device,
 	&keypad_device_thunder,
-	//&thunderc_reset_keys_device,
+	&thunderc_reset_keys_device,
 	&atcmd_virtual_device,
 };
 
@@ -350,6 +279,7 @@ static int kr3dh_config_gpio(int config)
 	} else {		/* for sleep state */
 		gpio_tlmm_config(GPIO_CFG(ACCEL_GPIO_I2C_SCL, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
 		gpio_tlmm_config(GPIO_CFG(ACCEL_GPIO_I2C_SDA, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
+//		gpio_tlmm_config(GPIO_CFG(ACCEL_GPIO_INT, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
 	}
 
 	return 0;
@@ -583,7 +513,7 @@ static int prox_power_set(unsigned char onoff)
 static struct proximity_platform_data proxi_pdata = {
 	.irq_num	= PROXI_GPIO_DOUT,
 	.power		= prox_power_set,
-	.methods		= 1,
+	.methods		= 0, //1,
 	.operation_mode		= 0,
 	.debounce	 = 0,
 	.cycle = 2,
