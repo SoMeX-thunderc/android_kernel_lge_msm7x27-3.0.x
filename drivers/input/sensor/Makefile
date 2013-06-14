@@ -7,8 +7,8 @@
 ifeq ($(CONFIG_MACH_MSM7X27_PECAN),y)
  obj-$(CONFIG_SENSOR_GP2AP)	+= gp2ap002_pecan.o
 else
- ifeq ($(CONFIG_MACH_MSM7X27_THUNDERG),y)
-  obj-$(CONFIG_SENSOR_GP2AP)	+= gp2ap002_thunderg.o
+ ifeq ($(CONFIG_MACH_MSM7X27_THUNDERC),y)
+  obj-$(CONFIG_SENSOR_GP2AP)	+= gp2ap002_thunderc.o
  else
   obj-$(CONFIG_SENSOR_GP2AP)	+= gp2ap002.o
  endif

@@ -36,7 +36,14 @@ static void sdcc_gpio_init(void)
 	int rc = 0;
 	if (gpio_request(GPIO_SD_DETECT_N, "sdc1_status_pin_irq"))
 		pr_err("failed to request gpio sdc1_status_irq\n");
-	rc = gpio_tlmm_config(GPIO_CFG(GPIO_SD_DETECT_N, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL,
+	rc = gpio_tlmm_config(GPIO_CFG(GPIO_SD_DETECT_N, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP,
+									GPIO_CFG_2MA), GPIO_CFG_ENABLE);
+	if (rc)
+		printk(KERN_ERR "%s: Failed to configure GPIO %d\n",
+					__func__, rc);
+	if (gpio_request(GPIO_MMC_COVER_DETECT, "sdc1_status_socket_irq"))
+		pr_err("failed to request gpio sdc1_status_irq\n");
+	rc = gpio_tlmm_config(GPIO_CFG(GPIO_MMC_COVER_DETECT, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP,
 									GPIO_CFG_2MA), GPIO_CFG_ENABLE);
 	if (rc)
 		printk(KERN_ERR "%s: Failed to configure GPIO %d\n",
@@ -257,7 +264,7 @@ static uint32_t msm_sdcc_setup_power(struct device *dv, unsigned int vdd)
 #ifdef CONFIG_MMC_MSM_CARD_HW_DETECTION
 static unsigned int thunderc_sdcc_slot_status(struct device *dev)
 {
-	return !(gpio_get_value(GPIO_SD_DETECT_N));
+	return !(gpio_get_value(GPIO_MMC_COVER_DETECT)||gpio_get_value(GPIO_SD_DETECT_N));
 }
 #endif
 
@@ -289,7 +296,7 @@ static struct mmc_platform_data msm7x2x_sdc1_data = {
 	.ocr_mask		= MMC_VDD_30_31,
 	.translate_vdd	= msm_sdcc_setup_power,
 	.status 		= thunderc_sdcc_slot_status,
-	.status_irq 	= MSM_GPIO_TO_INT(GPIO_SD_DETECT_N),
+	.status_irq 	= MSM_GPIO_TO_INT(GPIO_MMC_COVER_DETECT),
 	.irq_flags		= IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 	.mmc_bus_width	= MMC_CAP_4_BIT_DATA,
 #else
