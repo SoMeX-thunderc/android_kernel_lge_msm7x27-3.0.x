@@ -212,7 +212,7 @@ static int32_t isx005_i2c_read(unsigned short   saddr,
 	return rc;
 }
 
-#if defined(CONFIG_MACH_MSM7X27_THUNDERG) || \
+#if defined(CONFIG_MACH_MSM7X27_THUNDERC) || \
 	defined(CONFIG_MACH_MSM7X27_THUNDERA)
 static int isx005_reg_init(void)
 {
