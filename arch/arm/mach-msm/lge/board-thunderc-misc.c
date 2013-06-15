@@ -186,52 +186,51 @@ int thunderc_vibrator_power_set(int enable)
 	int ret = 0;
 	int en = !!enable;
 
-if (dev==NULL) {
-printk(KERN_ERR "%s: backlight device get failed\n", __FUNCTION__);
-return -1;
-}
+	if (dev==NULL) {
+	printk(KERN_ERR "%s: backlight device get failed\n", __FUNCTION__);
+	return -1;
+	}
 
-if (en == is_enabled)
-return 0;
+	if (en == is_enabled)
+		return 0;
 
 	while(retry--) {
-		/* 3300 mV for Motor IC */
+		/* 3300 mV for Motor IC */				
 		if (en)
 			ret = aat28xx_ldo_set_level(dev, 1, (VIBE_IC_VOLTAGE) * en);
 
-	ret |= aat28xx_ldo_enable(dev, 1, en);
-			if (ret < 0) {
-				printk(KERN_ERR "%s: vibrator LDO failed\n", 
-						__FUNCTION__);
-				if (retry < 3)
-					mdelay(100);
-				continue;
-			}
-			is_enabled = en;
-			return 0;
+		ret |= aat28xx_ldo_enable(dev, 1, en);
+		if (ret < 0) {
+			printk(KERN_ERR "%s: vibrator LDO failed\n", 
+					__FUNCTION__);
+			if (retry < 3)
+				mdelay(100);
+			continue;
 		}
+		is_enabled = en;
+		return 0;
+	}
 
-return -EIO;
+	return -EIO;
 }
 
 int thunderc_vibrator_pwm_set(int enable, int amp)
 {
-int gain = ((PWM_MAX_HALF_DUTY*amp) >> 7)+ GPMN_D_DEFAULT;
+	int gain = ((PWM_MAX_HALF_DUTY*amp) >> 7)+ GPMN_D_DEFAULT;
 
-REG_WRITEL((GPMN_M_DEFAULT & GPMN_M_MASK), GP_MN_CLK_MDIV_REG);
-REG_WRITEL((~( GPMN_N_DEFAULT - GPMN_M_DEFAULT )&GPMN_N_MASK), GP_MN_CLK_NDIV_REG);
-REG_WRITEL((gain & GPMN_D_MASK), GP_MN_CLK_DUTY_REG);
-if (enable) {
-gpio_tlmm_config(GPIO_CFG(GPIO_LIN_MOTOR_PWM,1,GPIO_CFG_OUTPUT,
-			GPIO_CFG_PULL_DOWN,GPIO_CFG_2MA),GPIO_CFG_ENABLE);
-REG_WRITEL((gain & GPMN_D_MASK), GP_MN_CLK_DUTY_REG);
-} else {
-REG_WRITEL(GPMN_D_DEFAULT, GP_MN_CLK_DUTY_REG);
-gpio_tlmm_config(GPIO_CFG(GPIO_LIN_MOTOR_PWM,0,GPIO_CFG_OUTPUT,
-			  GPIO_CFG_PULL_DOWN,GPIO_CFG_2MA),GPIO_CFG_ENABLE);
-}
-
-return 0;
+	REG_WRITEL((GPMN_M_DEFAULT & GPMN_M_MASK), GP_MN_CLK_MDIV_REG);
+	REG_WRITEL((~( GPMN_N_DEFAULT - GPMN_M_DEFAULT )&GPMN_N_MASK), GP_MN_CLK_NDIV_REG);
+	REG_WRITEL((gain & GPMN_D_MASK), GP_MN_CLK_DUTY_REG);
+	if (enable) {
+		gpio_tlmm_config(GPIO_CFG(GPIO_LIN_MOTOR_PWM,1,GPIO_CFG_OUTPUT,
+	      GPIO_CFG_PULL_DOWN,GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+	REG_WRITEL((gain & GPMN_D_MASK), GP_MN_CLK_DUTY_REG);
+	} else {
+	REG_WRITEL(GPMN_D_DEFAULT, GP_MN_CLK_DUTY_REG);
+	gpio_tlmm_config(GPIO_CFG(GPIO_LIN_MOTOR_PWM,0,GPIO_CFG_OUTPUT,
+	        GPIO_CFG_PULL_DOWN,GPIO_CFG_2MA),GPIO_CFG_ENABLE);
+	}
+	return 0;
 }
 
 int thunderc_vibrator_ic_enable_set(int enable)
