@@ -40,6 +40,19 @@
 #include <mach/board_lge.h>
 #endif
 
+#if defined(CONFIG_MACH_MSM7X27_THUNDERC)
+#include <mach/rpc_hsusb.h>
+int charger_hw_type;
+enum {
+	CHG_HOST_PC,
+	CHG_WALL = 2,
+	CHG_UNDEFINED,
+};
+enum {
+	POWER_SUPPLY_PROP_BATTERY_ID_CHECK = POWER_SUPPLY_PROP_SERIAL_NUMBER+1,
+	POWER_SUPPLY_PROP_BATTERY_TEMP_ADC,
+};
+#endif
 #define BATTERY_RPC_PROG	0x30000089
 #define BATTERY_RPC_VER_1_1	0x00010001
 #define BATTERY_RPC_VER_2_1	0x00020001
@@ -195,6 +208,10 @@ struct rpc_reply_batt_chg_v1 {
 #if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
 	u32	battery_soc;
 #endif
+#if defined(CONFIG_MACH_MSM7X27_THUNDERC)
+	u32	battery_id;
+	u32	battery_therm;
+#endif
 };
 
 struct rpc_reply_batt_chg_v2 {
@@ -236,6 +253,10 @@ struct msm_battery_info {
 	u32 battery_level;
 	u32 battery_voltage; /* in millie volts */
 	u32 battery_temp;  /* in celsius */
+	#if defined(CONFIG_MACH_MSM7X27_THUNDERC)
+	u32 valid_battery_id;
+	u32 battery_therm;
+	#endif
 
 	u32(*calculate_capacity) (u32 voltage);
 
@@ -330,6 +351,10 @@ static enum power_supply_property msm_batt_power_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_CAPACITY,
 	POWER_SUPPLY_PROP_TEMP,
+#if defined(CONFIG_MACH_MSM7X27_THUNDERC)
+	POWER_SUPPLY_PROP_BATTERY_ID_CHECK,
+	POWER_SUPPLY_PROP_BATTERY_TEMP_ADC,
+#endif
 };
 
 static int msm_batt_power_get_property(struct power_supply *psy,
@@ -380,8 +405,16 @@ static int msm_batt_power_get_property(struct power_supply *psy,
 		val->intval = (msm_batt_info.battery_temp)*10;
 #else
 		val->intval = msm_batt_info.battery_temp;
-#endif
 		break;
+#if defined(CONFIG_MACH_MSM7X27_THUNDERC)
+	case POWER_SUPPLY_PROP_BATTERY_ID_CHECK:
+		val->intval = msm_batt_info.valid_battery_id;
+		break;
+	case POWER_SUPPLY_PROP_BATTERY_TEMP_ADC:
+		val->intval = msm_batt_info.battery_therm;
+		break;
+#endif
+
 	default:
 		return -EINVAL;
 	}
@@ -469,6 +502,10 @@ static int msm_batt_get_batt_chg_status(void)
 		be32_to_cpu_self(v1p->battery_temp);
 #if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
 		be32_to_cpu_self(v1p->battery_soc);
+#ifdef CONFIG_MACH_MSM7X27_THUNDERC
+		be32_to_cpu_self(v1p->battery_id);
+		be32_to_cpu_self(v1p->battery_therm);
+#else
 #endif
 
 #if 0
@@ -511,6 +548,11 @@ static void msm_batt_update_psy_status(void)
 	u32	battery_tmp_cap;
 	u32	battery_soc;
 #endif
+#if defined(CONFIG_MACH_MSM7X27_THUNDERC)
+	u32	battery_id;
+	u32	battery_therm;
+	u32	hw_type_from_usb;
+#endif
 	struct	power_supply	*supp;
 
 #ifdef CONFIG_MACH_LGE
@@ -519,7 +561,6 @@ static void msm_batt_update_psy_status(void)
    */
 	if(is_run_batt_update)
 		return;
-
 	is_run_batt_update = 1;
 	
 	if (msm_batt_get_batt_chg_status())	{
@@ -532,13 +573,33 @@ static void msm_batt_update_psy_status(void)
 #endif
 
 	charger_status = rep_batt_chg.v1.charger_status;
+#ifdef CONFIG_MACH_MSM7X27_THUNDERC
+	hw_type_from_usb = msm_hsusb_get_charger_type();
+	if (hw_type_from_usb == CHG_HOST_PC) {
+		charger_type = CHARGER_TYPE_USB_PC;
+	} else if (hw_type_from_usb == CHG_WALL) {
+		charger_type = CHARGER_TYPE_WALL;
+	} else {
+		charger_type = CHARGER_TYPE_NONE;
+
+
+
+
+
+	}
+#else	
 	charger_type = rep_batt_chg.v1.charger_type;
+#endif	
 	battery_status = rep_batt_chg.v1.battery_status;
 	battery_level = rep_batt_chg.v1.battery_level;
 	battery_voltage = rep_batt_chg.v1.battery_voltage;
 	battery_temp = rep_batt_chg.v1.battery_temp;
 #if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
 	battery_soc = rep_batt_chg.v1.battery_soc;
+#endif
+#if defined(CONFIG_MACH_MSM7X27_THUNDERC)
+	battery_id = rep_batt_chg.v1.battery_id;
+	battery_therm = rep_batt_chg.v1.battery_therm;
 #endif
 
 	/* Make correction for battery status */
@@ -575,10 +636,15 @@ static void msm_batt_update_psy_status(void)
 	unnecessary_event_count = 0;
 
 #if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
-
+#ifdef CONFIG_MACH_MSM7X27_THUNDERC
+	DBG_LIMIT("BATT: rcvd: %d, %d, %d, %d, %d, %d, %d, %d, %d\n",
+		 charger_status, charger_type, battery_status,
+		 battery_level, battery_voltage, battery_temp, battery_soc,battery_id,battery_therm);
+#else
 	DBG_LIMIT("BATT: rcvd: %d, %d, %d, %d, %d, %d, %d\n",
 		 charger_status, charger_type, battery_status,
 		 battery_level, battery_voltage, battery_temp, battery_soc);
+#endif
 #else
 	DBG_LIMIT("BATT: rcvd: %d, %d, %d, %d; %d, %d\n",
 		 charger_status, charger_type, battery_status,
@@ -628,7 +694,7 @@ static void msm_batt_update_psy_status(void)
 		if (charger_status == CHARGER_STATUS_GOOD ||
 		    charger_status == CHARGER_STATUS_WEAK) {
 			if (msm_batt_info.current_chg_source) {
-#ifdef CONFIG_MACH_LGE
+#ifdef CONFIG_LGE_FUEL_GAUGE
 		/* LGE_CHANGE
 		 * add for Full charging
 		 * 2010-05-04 baborobo@lge.com
@@ -655,7 +721,7 @@ static void msm_batt_update_psy_status(void)
 				else
 					supp = &msm_psy_usb;
 			}
-#ifdef CONFIG_MACH_LGE
+#ifdef CONFIG_LGE_FUEL_GAUGE
 		/* LGE_CHANGE
 		 * add for unpluged status of battery
 		 * 2010-04-28 baborobo@lge.com
@@ -674,7 +740,7 @@ static void msm_batt_update_psy_status(void)
 			supp = &msm_psy_batt;
 		}
 	} else {
-#ifdef CONFIG_MACH_LGE
+#ifdef CONFIG_LGE_FUEL_GAUGE
 		/* LGE_CHANGE
 		 * add for unpluged status of battery
 		 * 2010-04-07 baborobo@lge.com
@@ -689,7 +755,7 @@ static void msm_batt_update_psy_status(void)
 		/* Correct charger status */
 		if (charger_type != CHARGER_TYPE_INVALID &&
 		    charger_status == CHARGER_STATUS_GOOD) {
-#ifdef CONFIG_MACH_LGE
+#ifdef CONFIG_LGE_FUEL_GAUGE
 		/* LGE_CHANGE
 		 * add for Full charging
 		 * 2010-05-04 baborobo@lge.com
@@ -729,7 +795,7 @@ static void msm_batt_update_psy_status(void)
 #else
 	if (battery_status == BATTERY_STATUS_INVALID) {
 #endif
-#ifdef CONFIG_MACH_LGE
+#ifdef CONFIG_LGE_FUEL_GAUGE
 		if (battery_level != BATTERY_LEVEL_INVALID) {
 #endif
 			if (battery_voltage >= msm_batt_info.voltage_min_design &&
@@ -771,9 +837,13 @@ static void msm_batt_update_psy_status(void)
 			msm_batt_info.batt_health = POWER_SUPPLY_HEALTH_UNKNOWN;
 		}
 
-#ifdef CONFIG_MACH_LGE
+#ifdef CONFIG_LGE_FUEL_GAUGE
+#ifdef CONFIG_MACH_MSM7X27_THUNDERC
+		if (msm_batt_info.batt_status != POWER_SUPPLY_STATUS_CHARGING) 
+#else
 		if (msm_batt_info.batt_status != POWER_SUPPLY_STATUS_CHARGING
 			&& msm_batt_info.batt_status != POWER_SUPPLY_STATUS_FULL)
+#endif
 #else
 		if (msm_batt_info.batt_status != POWER_SUPPLY_STATUS_CHARGING) 
 #endif
@@ -804,21 +874,33 @@ static void msm_batt_update_psy_status(void)
 	msm_batt_info.charger_type 	= charger_type;
 	msm_batt_info.battery_status 	= battery_status;
 	msm_batt_info.battery_level 	= battery_level;
+#ifdef CONFIG_MACH_MSM7X27_THUNDERC
+	msm_batt_info.battery_temp 	= battery_temp * 10;
+	msm_batt_info.valid_battery_id  = battery_id;
+	msm_batt_info.battery_therm     = battery_therm;
+#else
 	msm_batt_info.battery_temp 	= battery_temp;
+#endif
 
 #if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
-	battery_tmp_cap = msm_batt_info.calculate_capacity(battery_soc);
-
-	if((msm_batt_info.battery_voltage != battery_voltage) ||
-		(msm_batt_info.batt_capacity != battery_tmp_cap)) {
+#ifndef CONFIG_MACH_MSM7X27_THUNDERC
+	msm_batt_info.battery_voltage  	= battery_voltage;
+	msm_batt_info.batt_capacity =
+		msm_batt_info.calculate_capacity(battery_soc);
+		
+	if (!supp)
+		supp = msm_batt_info.current_ps;
+#else		
+	if(msm_batt_info.battery_voltage != battery_voltage) {
 		msm_batt_info.battery_voltage = battery_voltage;
-		msm_batt_info.batt_capacity = battery_tmp_cap;
+		msm_batt_info.batt_capacity = msm_batt_info.calculate_capacity(battery_soc);
 		DBG_LIMIT("BATT: voltage = %u mV [capacity = %d%%]\n",
 			 battery_voltage, msm_batt_info.batt_capacity);
 
 		if (!supp)
 			supp = msm_batt_info.current_ps;
 	}
+#endif
 #else
 	if (msm_batt_info.battery_voltage != battery_voltage) {
 		msm_batt_info.battery_voltage  	= battery_voltage;
@@ -832,6 +914,15 @@ static void msm_batt_update_psy_status(void)
 	}
 #endif
 
+#if defined(CONFIG_LGE_FUEL_GAUGE) && !defined(CONFIG_MACH_MSM7X27_THUNDERC)
+	if (supp 
+			&& supp != &msm_psy_batt) {
+		msm_batt_info.current_ps = supp;
+		DBG_LIMIT("BATT: Supply = %s\n", supp->name);
+		power_supply_changed(supp);
+	}
+	power_supply_changed(&msm_psy_batt);
+#else
 	if (supp) {
 		msm_batt_info.current_ps = supp;
 		DBG_LIMIT("BATT: Supply = %s\n", supp->name);
@@ -998,6 +1089,11 @@ void msm_batt_late_resume(struct early_suspend *h)
 #else
 	pr_debug("%s: enter\n", __func__);
 
+#ifdef CONFIG_LGE_FUEL_GAUGE
+		/* LGE_CHANGE
+		 * add for Battery Status Update when out of sleep
+		 * 2010-04-21 baborobo@lge.com
+		 */
 	msm_batt_update_psy_status();
 
 	pr_debug("%s: exit\n", __func__);
