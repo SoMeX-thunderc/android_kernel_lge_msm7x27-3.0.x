@@ -380,6 +380,13 @@ int msm_hsusb_is_serial_num_null(uint32_t val)
 }
 EXPORT_SYMBOL(msm_hsusb_is_serial_num_null);
 
+#if defined(CONFIG_MACH_MSM7X27_ALOHAV) || defined(CONFIG_MACH_MSM7X27_THUNDERC)
+/* ADD THUNDER feature TO USE VS740 BATT DRIVER IN THUNDERC
+ * 2010-05-13, taehung.kim@lge.com
+ */
+/* woonghee@lge.com	2009-09-25, battery charging */
+static int charger_type;
+#endif
 int msm_chg_usb_charger_connected(uint32_t device)
 {
 	int rc = 0;
@@ -388,6 +395,13 @@ int msm_chg_usb_charger_connected(uint32_t device)
 		uint32_t otg_dev;
 	} req;
 
+#if defined(CONFIG_MACH_MSM7X27_ALOHAV) || defined(CONFIG_MACH_MSM7X27_THUNDERC)
+	/* ADD THUNDER feature TO USE VS740 BATT DRIVER IN THUNDERC
+	 * 2010-05-13, taehung.kim@lge.com
+	 */
+	/* woonghee@lge.com	2009-09-25, battery charging */
+	charger_type = device;
+#endif
 	if (!chg_ep || IS_ERR(chg_ep))
 		return -EAGAIN;
 	req.otg_dev = cpu_to_be32(device);
@@ -435,6 +449,14 @@ int msm_chg_usb_i_is_not_available(void)
 		struct rpc_request_hdr hdr;
 	} req;
 
+#if defined(CONFIG_MACH_MSM7X27_ALOHAV) || defined(CONFIG_MACH_MSM7X27_THUNDERC)
+/* LGE_CHANGE
+ * ADD THUNDER feature TO USE VS740 BATT DRIVER IN THUNDERC
+ * 2010-05-13, taehung.kim@lge.com
+ */
+	/* LGE_CHANGES_S [woonghee@lge.com] 2009-09-25, battery charging */
+	charger_type = 3;	/* CHG_UNDEFINDED */
+#endif
 	if (!chg_ep || IS_ERR(chg_ep))
 		return -EAGAIN;
 	rc = msm_rpc_call(chg_ep, chg_rpc_ids.chg_usb_i_is_not_available_proc,
@@ -658,4 +680,193 @@ void hsusb_chg_connected(enum chg_type chgtype)
 	msm_chg_usb_charger_connected(chgtype);
 }
 EXPORT_SYMBOL(hsusb_chg_connected);
+#endif
+
+#if defined(CONFIG_MACH_MSM7X27_ALOHAV) || defined(CONFIG_MACH_MSM7X27_THUNDERC)
+/* LGE_CHANGE
+ * ADD THUNDER feature TO USE VS740 BATT DRIVER IN THUNDERC
+ * 2010-05-13, taehung.kim@lge.com
+ */
+
+/* LGE_CHANGES_S [woonghee@lge.com] 2009-09-25, battery charging */
+int msm_hsusb_get_charger_type(void)
+{
+	return charger_type;
+}
+EXPORT_SYMBOL(msm_hsusb_get_charger_type);
+#endif
+
+#if defined(CONFIG_USB_SUPPORT_LGE_SERIAL_FROM_ARM9_IMEI)
+/* Get IMEI from arm9 (GSM class) */
+
+#define ONCRPC_NV_CMD_REMOTE_PROC   9
+#define NV_IMEI_GET_PROG            0x3000000e
+/* NOTE: version of RPC depends on AMSS's setting(below is alohag's). */
+#define NV_IMEI_GET_VER             0x00060001
+#define NV_UE_IMEI_SIZE             9
+#define MAX_IMEI_SIZE               ((NV_UE_IMEI_SIZE - 1) * 2)
+
+int msm_nv_imei_get(unsigned char *nv_imei_ptr)
+{
+	static struct msm_rpc_endpoint *nv_imei_get_ep;
+	int rc = 0;
+	uint32_t nv_result;
+	uint32_t dummy1, dummy2;
+	struct nv_ue_imei_type imea_data;
+	int i;
+
+	struct msm_nv_imem_get_req {
+		struct rpc_request_hdr hdr;
+		enum nv_func_enum_type cmd;
+		enum nv_items_enum_type item;
+		uint32_t more_data;
+		enum nv_items_enum_type disc;
+		struct nv_ue_imei_type imea_data;;
+	} req;
+
+	struct hsusb_rpc_rep {
+		struct rpc_reply_hdr hdr;
+		enum nv_stat_enum_type result_item;
+		uint32_t rep_more_data;
+		enum nv_items_enum_type rep_disc;
+		struct nv_ue_imei_type imea_data;;
+	} rep;
+
+	nv_imei_get_ep = msm_rpc_connect_compatible(NV_IMEI_GET_PROG,
+			NV_IMEI_GET_VER, MSM_RPC_UNINTERRUPTIBLE);
+
+	if (IS_ERR(nv_imei_get_ep)) {
+		printk(KERN_ERR "%s: msm_rpc_connect failed! rc = %ld\n",
+				__func__, PTR_ERR(nv_imei_get_ep));
+		return -EINVAL;
+	}
+
+	/* init imea_data struct */
+	memset(&imea_data, 0, sizeof(imea_data));
+
+	req.cmd = cpu_to_be32(NV_READ_F);
+	req.item = cpu_to_be32(NV_UE_IMEI_I);
+	req.more_data = cpu_to_be32(1);
+	req.disc = cpu_to_be32(NV_UE_IMEI_I);
+	req.imea_data = imea_data;
+
+	rc = msm_rpc_call_reply(nv_imei_get_ep,
+			ONCRPC_NV_CMD_REMOTE_PROC,
+			&req, sizeof(req),
+			&rep, sizeof(rep),
+			5 * HZ);
+
+	if (rc < 0) {
+		printk(KERN_ERR "%s: msm_rpc_call failed! rc = %d\n", __func__, rc);
+		return -EINVAL;
+	}
+
+	nv_result = be32_to_cpu(rep.result_item);
+	dummy1 = be32_to_cpu(rep.rep_more_data);
+	dummy2 = be32_to_cpu(rep.rep_disc);
+
+	for (i = 0; i < NV_UE_IMEI_SIZE; i++) {
+		if ((rep.imea_data.ue_imei[i] & 0x0F) >= 0xA)
+			*(nv_imei_ptr + i*2) = (rep.imea_data.ue_imei[i] & 0x0F) + 55;
+		else
+			*(nv_imei_ptr + i*2) = (rep.imea_data.ue_imei[i] & 0x0F) + 48;
+		if (((rep.imea_data.ue_imei[i] & 0xF0) >> 4) >= 0xA)
+			*(nv_imei_ptr + i*2 + 1) = ((rep.imea_data.ue_imei[i] & 0xF0) >> 4) + 55;
+		else
+			*(nv_imei_ptr + i*2 + 1) = ((rep.imea_data.ue_imei[i] & 0xF0) >> 4) + 48;
+	}
+	*(nv_imei_ptr + MAX_IMEI_SIZE + 2) = '\0';
+	msm_rpc_close(nv_imei_get_ep);
+
+	pr_info("%s: msm_rpc_call success. ver = 0x%x\n",
+			__func__, NV_IMEI_GET_VER);
+	return rc;
+}
+EXPORT_SYMBOL(msm_nv_imei_get);
+
+/* LGE_CHANGE_S [hyunhui.park@lge.com] 2009-04-21, Detect charger type using RPC  */
+#if defined(CONFIG_USB_SUPPORT_LGDRIVER_GSM) || \
+	defined(CONFIG_USB_SUPPORT_LGE_GADGET_GSM)
+
+#define ONRPC_CHG_GET_GENERAL_STATUS_PROC	12
+
+enum charger_hw_type {
+	USB_CHARGER_TYPE_NONE,
+	USB_CHARGER_TYPE_WALL,
+	USB_CHARGER_TYPE_USB_PC,
+	USB_CHARGER_TYPE_USB_WALL,
+	USB_CHARGER_TYPE_USB_CARKIT,
+	USB_CHARGER_TYPE_INVALID
+};
+
+struct hsusb_rep_chg_type {
+	struct rpc_reply_hdr hdr;
+	u32 more_data;
+
+	u32 charger_status;
+	u32 charger_type;
+	u32 battery_status;
+	u32 battery_level;
+	u32 battery_voltage;
+	u32 battery_temp;
+	u32 charge_counter;
+};
+
+static struct hsusb_rep_chg_type rep;
+
+int msm_hsusb_detect_chg_type(void)
+{
+	int rc, ret = 0;
+	struct hsusb_req_chg_type {
+		struct rpc_request_hdr hdr;
+		u32 more_data;
+	} req;
+
+	if (!chg_ep || IS_ERR(chg_ep)) {
+		pr_err("%s: hsusb rpc connection not initialized, rc = %ld\n",
+				__func__, PTR_ERR(chg_ep));
+		return -EAGAIN;
+	}
+
+	req.more_data = __constant_cpu_to_be32(1);
+
+	memset(&rep, 0, sizeof(struct hsusb_rep_chg_type));
+
+	rc = msm_rpc_call_reply(chg_ep, ONRPC_CHG_GET_GENERAL_STATUS_PROC,
+			&req, sizeof(struct hsusb_req_chg_type),
+			&rep, sizeof(struct hsusb_rep_chg_type),
+			msecs_to_jiffies(5000));
+
+	if (rc < 0) {
+		printk(KERN_ERR "%s: rpc call failed !  rc = %d\n",
+				__func__, rc);
+		return rc;
+	}
+
+	rep.charger_type = be32_to_cpu(rep.charger_type);
+
+	/* ret value is matched to charger type in msm_hsusb.c */
+	switch (rep.charger_type) {
+	case USB_CHARGER_TYPE_WALL:
+	case USB_CHARGER_TYPE_USB_WALL:
+	case USB_CHARGER_TYPE_USB_CARKIT:
+		ret = 2; /* WALL CHARGER */
+		break;
+	case USB_CHARGER_TYPE_USB_PC:
+		ret = 0; /* HOST PC */
+		break;
+	case USB_CHARGER_TYPE_NONE:
+	case USB_CHARGER_TYPE_INVALID:
+	default:
+		ret = 3; /* INVALID */
+		break;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(msm_hsusb_detect_chg_type);
+
+#endif
+/* LGE_CHANGE_E [hyunhui.park@lge.com] 2009-04-21 */
+
 #endif

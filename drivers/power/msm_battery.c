@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -9,13 +9,18 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
  */
 
 /*
  * this needs to be before <linux/kernel.h> is loaded,
  * and <linux/sched.h> loads <linux/kernel.h>
  */
-#define DEBUG  0
+#define DEBUG  1
 
 #include <linux/slab.h>
 #include <linux/earlysuspend.h>
@@ -53,6 +58,7 @@ enum {
 	POWER_SUPPLY_PROP_BATTERY_TEMP_ADC,
 };
 #endif
+
 #define BATTERY_RPC_PROG	0x30000089
 #define BATTERY_RPC_VER_1_1	0x00010001
 #define BATTERY_RPC_VER_2_1	0x00020001
@@ -93,6 +99,7 @@ enum {
 #define RPC_TYPE_REQ     0
 #define RPC_TYPE_REPLY   1
 #define RPC_REQ_REPLY_COMMON_HEADER_SIZE   (3 * sizeof(uint32_t))
+
 
 #if DEBUG
 #define DBG_LIMIT(x...) do {if (printk_ratelimit()) pr_debug(x); } while (0)
@@ -205,7 +212,7 @@ struct rpc_reply_batt_chg_v1 {
 	u32	battery_level;
 	u32     battery_voltage;
 	u32	battery_temp;
-#if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
+#ifdef CONFIG_LGE_FUEL_GAUGE
 	u32	battery_soc;
 #endif
 #if defined(CONFIG_MACH_MSM7X27_THUNDERC)
@@ -375,35 +382,18 @@ static int msm_batt_power_get_property(struct power_supply *psy,
 		val->intval = msm_batt_info.batt_technology;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN:
-		val->intval = msm_batt_info.voltage_max_design*1000; //check for problems;
+		val->intval = msm_batt_info.voltage_max_design;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN:
 		val->intval = msm_batt_info.voltage_min_design;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-#ifdef CONFIG_MACH_LGE
-/* 2011-04-11 by hyuncheol0@lge.com
- * We use "voltage_now" attribute for the voltage of battery.
- * The unit of voltage_now is micro voltage.
- * So, we convert it here.
- */
-		val->intval = (msm_batt_info.battery_voltage)*1000;
-#else
 		val->intval = msm_batt_info.battery_voltage;
-#endif
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		val->intval = msm_batt_info.batt_capacity;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
-#ifdef CONFIG_MACH_LGE
-/* 2011-04-11 by hyuncheol0@lge.com
- * We use "temp" attribute for the temperature of battery.
- * The android framework and application treat it as xx.x degree Celsius.
- * So, we convert it here.
- */
-		val->intval = (msm_batt_info.battery_temp)*10;
-#else
 		val->intval = msm_batt_info.battery_temp;
 		break;
 #if defined(CONFIG_MACH_MSM7X27_THUNDERC)
@@ -414,7 +404,6 @@ static int msm_batt_power_get_property(struct power_supply *psy,
 		val->intval = msm_batt_info.battery_therm;
 		break;
 #endif
-
 	default:
 		return -EINVAL;
 	}
@@ -500,15 +489,12 @@ static int msm_batt_get_batt_chg_status(void)
 		be32_to_cpu_self(v1p->battery_level);
 		be32_to_cpu_self(v1p->battery_voltage);
 		be32_to_cpu_self(v1p->battery_temp);
-#if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
+#ifdef CONFIG_LGE_FUEL_GAUGE
 		be32_to_cpu_self(v1p->battery_soc);
 #ifdef CONFIG_MACH_MSM7X27_THUNDERC
 		be32_to_cpu_self(v1p->battery_id);
 		be32_to_cpu_self(v1p->battery_therm);
 #else
-#endif
-
-#if 0
 		DBG_LIMIT("%s() \n ----- charger / battery status --------\n", __func__);
 		DBG_LIMIT("\t charger_status=%d\n", v1p->charger_status);
 		DBG_LIMIT("\t charger_type=%d\n", v1p->charger_type);
@@ -516,9 +502,8 @@ static int msm_batt_get_batt_chg_status(void)
 		DBG_LIMIT("\t battery_level=%d\n", v1p->battery_level);
 		DBG_LIMIT("\t battery_voltage=%d\n", v1p->battery_voltage);
 		DBG_LIMIT("\t battery_temp=%d\n", v1p->battery_temp);
-	#if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
 		DBG_LIMIT("\t battery_soc=%d\n", v1p->battery_soc);
-	#endif
+#endif
 #endif
 	} else {
 		pr_err("%s: No battery/charger data in RPC reply\n", __func__);
@@ -528,13 +513,6 @@ static int msm_batt_get_batt_chg_status(void)
 	return 0;
 }
 
-#ifdef CONFIG_MACH_LGE
-/* 2010-12-14 by baborobo@lge.com
- * if it is updateing of battery-status by rpc,
- * don't request updateing of battery-status
- */
-static int is_run_batt_update = 0;
-#endif
 static void msm_batt_update_psy_status(void)
 {
 	static u32 unnecessary_event_count;
@@ -544,8 +522,7 @@ static void msm_batt_update_psy_status(void)
 	u32	battery_level;
 	u32     battery_voltage;
 	u32	battery_temp;
-#if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
-	u32	battery_tmp_cap;
+#ifdef CONFIG_LGE_FUEL_GAUGE
 	u32	battery_soc;
 #endif
 #if defined(CONFIG_MACH_MSM7X27_THUNDERC)
@@ -555,22 +532,8 @@ static void msm_batt_update_psy_status(void)
 #endif
 	struct	power_supply	*supp;
 
-#ifdef CONFIG_MACH_LGE
-  /* 2010-12-14 by baborobo@lge.com
-   * to check the updating-status
-   */
-	if(is_run_batt_update)
-		return;
-	is_run_batt_update = 1;
-	
-	if (msm_batt_get_batt_chg_status())	{
-		is_run_batt_update = 0;
-		return;
-	}
-#else
 	if (msm_batt_get_batt_chg_status())
 		return;
-#endif
 
 	charger_status = rep_batt_chg.v1.charger_status;
 #ifdef CONFIG_MACH_MSM7X27_THUNDERC
@@ -581,27 +544,21 @@ static void msm_batt_update_psy_status(void)
 		charger_type = CHARGER_TYPE_WALL;
 	} else {
 		charger_type = CHARGER_TYPE_NONE;
-
-
-
-
-
 	}
-#else	
+#else
 	charger_type = rep_batt_chg.v1.charger_type;
-#endif	
+#endif
 	battery_status = rep_batt_chg.v1.battery_status;
 	battery_level = rep_batt_chg.v1.battery_level;
 	battery_voltage = rep_batt_chg.v1.battery_voltage;
 	battery_temp = rep_batt_chg.v1.battery_temp;
-#if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
+#ifdef CONFIG_LGE_FUEL_GAUGE
 	battery_soc = rep_batt_chg.v1.battery_soc;
 #endif
 #if defined(CONFIG_MACH_MSM7X27_THUNDERC)
 	battery_id = rep_batt_chg.v1.battery_id;
 	battery_therm = rep_batt_chg.v1.battery_therm;
 #endif
-
 	/* Make correction for battery status */
 	if (battery_status == BATTERY_STATUS_INVALID_v1) {
 		if (msm_batt_info.chg_api_version < CHG_RPC_VER_3_1)
@@ -613,7 +570,7 @@ static void msm_batt_update_psy_status(void)
 	    battery_status == msm_batt_info.battery_status &&
 	    battery_level == msm_batt_info.battery_level &&
 	    battery_voltage == msm_batt_info.battery_voltage &&
-#if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
+#ifdef CONFIG_LGE_FUEL_GAUGE
 	    battery_soc == msm_batt_info.batt_capacity &&
 #endif
 	    battery_temp == msm_batt_info.battery_temp) {
@@ -624,18 +581,12 @@ static void msm_batt_update_psy_status(void)
 		if ((unnecessary_event_count % 20) == 1)
 			DBG_LIMIT("BATT: same event count = %u\n",
 				 unnecessary_event_count);
-#ifdef CONFIG_MACH_LGE
-    /* 2010-12-14 by baborobo@lge.com
-     * to check the updating-status
-     */
-	  is_run_batt_update = 0;
-#endif
 		return;
 	}
 
 	unnecessary_event_count = 0;
 
-#if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
+#ifdef CONFIG_LGE_FUEL_GAUGE
 #ifdef CONFIG_MACH_MSM7X27_THUNDERC
 	DBG_LIMIT("BATT: rcvd: %d, %d, %d, %d, %d, %d, %d, %d, %d\n",
 		 charger_status, charger_type, battery_status,
@@ -787,31 +738,16 @@ static void msm_batt_update_psy_status(void)
 			/* Use previous */
 			battery_voltage = msm_batt_info.battery_voltage;
 	}
-	
-#ifdef CONFIG_LGE_FUEL_SPG
-	// LGE_CHANGE_S dangwoo.choi@lge.com
-	if (battery_status >= BATTERY_STATUS_INVALID_v1) {
-	// LGE_CHANGE_E dangwoo.choi@lge.com
-#else
 	if (battery_status == BATTERY_STATUS_INVALID) {
-#endif
 #ifdef CONFIG_LGE_FUEL_GAUGE
-		if (battery_level != BATTERY_LEVEL_INVALID) {
+		if (battery_level != BATTERY_LEVEL_INVALID) 
 #endif
-			if (battery_voltage >= msm_batt_info.voltage_min_design &&
-			    battery_voltage <= msm_batt_info.voltage_max_design) {
-				DBG_LIMIT("BATT: Battery valid\n");
-				msm_batt_info.batt_valid = 1;
-				battery_status = BATTERY_STATUS_GOOD;
-			}
-			// LGE_CHANGE_S dangwoo.choi@lge.com
-			else {
-				battery_voltage = 0;
-			}
-			// LGE_CHANGE_E dangwoo.choi@lge.com
-#ifdef CONFIG_MACH_LGE
+		if (battery_voltage >= msm_batt_info.voltage_min_design &&
+		    battery_voltage <= msm_batt_info.voltage_max_design) {
+			DBG_LIMIT("BATT: Battery valid\n");
+			msm_batt_info.batt_valid = 1;
+			battery_status = BATTERY_STATUS_GOOD;
 		}
-#endif
 	}
 
 	if (msm_batt_info.battery_status != battery_status) {
@@ -882,15 +818,15 @@ static void msm_batt_update_psy_status(void)
 	msm_batt_info.battery_temp 	= battery_temp;
 #endif
 
-#if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
+#ifdef CONFIG_LGE_FUEL_GAUGE
 #ifndef CONFIG_MACH_MSM7X27_THUNDERC
 	msm_batt_info.battery_voltage  	= battery_voltage;
 	msm_batt_info.batt_capacity =
 		msm_batt_info.calculate_capacity(battery_soc);
-		
+
 	if (!supp)
 		supp = msm_batt_info.current_ps;
-#else		
+#else
 	if(msm_batt_info.battery_voltage != battery_voltage) {
 		msm_batt_info.battery_voltage = battery_voltage;
 		msm_batt_info.batt_capacity = msm_batt_info.calculate_capacity(battery_soc);
@@ -900,6 +836,7 @@ static void msm_batt_update_psy_status(void)
 		if (!supp)
 			supp = msm_batt_info.current_ps;
 	}
+	
 #endif
 #else
 	if (msm_batt_info.battery_voltage != battery_voltage) {
@@ -928,12 +865,6 @@ static void msm_batt_update_psy_status(void)
 		DBG_LIMIT("BATT: Supply = %s\n", supp->name);
 		power_supply_changed(supp);
 	}
-
-#ifdef CONFIG_MACH_LGE
-  /* 2010-12-14 by baborobo@lge.com
-   * to check the updating-status
-   */
-	is_run_batt_update = 0;
 #endif
 }
 
@@ -1040,7 +971,6 @@ static int msm_batt_modify_client(u32 client_handle, u32 desired_batt_voltage,
 
 void msm_batt_early_suspend(struct early_suspend *h)
 {
-#ifndef CONFIG_MACH_LGE
 	int rc;
 
 	pr_debug("%s: enter\n", __func__);
@@ -1061,12 +991,10 @@ void msm_batt_early_suspend(struct early_suspend *h)
 	}
 
 	pr_debug("%s: exit\n", __func__);
-#endif
 }
 
 void msm_batt_late_resume(struct early_suspend *h)
 {
-#ifndef CONFIG_MACH_LGE
 	int rc;
 
 	pr_debug("%s: enter\n", __func__);
@@ -1085,10 +1013,6 @@ void msm_batt_late_resume(struct early_suspend *h)
 		return;
 	}
 
-	pr_debug("%s: exit\n", __func__);
-#else
-	pr_debug("%s: enter\n", __func__);
-
 #ifdef CONFIG_LGE_FUEL_GAUGE
 		/* LGE_CHANGE
 		 * add for Battery Status Update when out of sleep
@@ -1101,7 +1025,7 @@ void msm_batt_late_resume(struct early_suspend *h)
 }
 #endif
 
-#if defined CONFIG_MACH_LGE && defined CONFIG_PM
+#if defined CONFIG_MACH_MSM7X27_THUNDERG && defined CONFIG_PM
 static int msm_batt_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	int rc;
@@ -1151,7 +1075,7 @@ static int msm_batt_resume(struct platform_device *pdev)
 	msm_batt_update_psy_status();
 	return 0;
 }
-#endif //#if defined CONFIG_MACH_LGE && defined CONFIG_PM
+#endif //#if defined CONFIG_MACH_MSM7X27_THUNDERG && defined CONFIG_PM
 
 struct msm_batt_vbatt_filter_req {
 	u32 batt_handle;
@@ -1527,16 +1451,6 @@ static int msm_batt_cleanup(void)
 
 static u32 msm_batt_capacity(u32 current_voltage)
 {
-#if defined(CONFIG_LGE_FUEL_GAUGE) || defined(CONFIG_LGE_FUEL_SPG)
-// LGE_CHANGE_S dangwoo.choi@lge.com
-	if(msm_batt_info.batt_status == POWER_SUPPLY_STATUS_UNKNOWN)
-		return 0;
-// LGE_CHANGE_E dangwoo.choi@lge.com
-	if(current_voltage > 100)
-		return 100;
-
-	return current_voltage; 
-#else
 	u32 low_voltage = msm_batt_info.voltage_min_design;
 	u32 high_voltage = msm_batt_info.voltage_max_design;
 
@@ -1547,7 +1461,6 @@ static u32 msm_batt_capacity(u32 current_voltage)
 	else
 		return (current_voltage - low_voltage) * 100
 			/ (high_voltage - low_voltage);
-#endif
 }
 
 #ifndef CONFIG_BATTERY_MSM_FAKE
@@ -1685,7 +1598,7 @@ static int msm_batt_cb_func(struct msm_rpc_client *client,
 
 #if defined(CONFIG_LGE_DETECT_PIF_PATCH)
 static unsigned pif_value;
-//static unsigned low_power_mode;
+static unsigned low_power_mode;
 
 static ssize_t msm_batt_pif_show(struct device* dev, struct device_attribute* attr, char* buf)
 {
@@ -1702,73 +1615,6 @@ static struct attribute* dev_attrs[] = {
 static struct attribute_group dev_attr_grp = {
 	.attrs = dev_attrs,
 };
-#endif
-
-#ifdef CONFIG_MACH_LGE
-static unsigned batt_volt;
-static unsigned chg_therm;
-static unsigned pcb_version;
-static unsigned chg_curr_volt;
-static unsigned batt_therm;
-static unsigned batt_volt_raw;
-
-
-static ssize_t msm_batt_batt_volt_show(struct device* dev, struct device_attribute* attr, char* buf)
-{
-	batt_volt = lge_get_batt_volt();
-	return sprintf(buf,"%d\n", batt_volt);
-}
-static DEVICE_ATTR(batt_volt, S_IRUGO, msm_batt_batt_volt_show, NULL);
-
-static ssize_t msm_batt_chg_therm_show(struct device* dev, struct device_attribute* attr, char* buf)
-{
-	chg_therm = lge_get_chg_therm();
-	return sprintf(buf,"%d\n", chg_therm);
-}
-static DEVICE_ATTR(chg_therm, S_IRUGO, msm_batt_chg_therm_show, NULL);
-
-static ssize_t msm_batt_pcb_version_show(struct device* dev, struct device_attribute* attr, char* buf)
-{
-	pcb_version = lge_get_pcb_version();
-	return sprintf(buf,"%d\n", pcb_version);
-}
-static DEVICE_ATTR(pcb_version, S_IRUGO, msm_batt_pcb_version_show, NULL);
-
-static ssize_t msm_batt_chg_curr_volt_show(struct device* dev, struct device_attribute* attr, char* buf)
-{
-	chg_curr_volt = lge_get_chg_curr_volt();
-	return sprintf(buf,"%d\n", chg_curr_volt);
-}
-static DEVICE_ATTR(chg_curr_volt, S_IRUGO, msm_batt_chg_curr_volt_show, NULL);
-
-static ssize_t msm_batt_batt_therm_show(struct device* dev, struct device_attribute* attr, char* buf)
-{
-	batt_therm = lge_get_batt_therm();
-	return sprintf(buf,"%d\n", batt_therm);
-}
-static DEVICE_ATTR(batt_therm, S_IRUGO, msm_batt_batt_therm_show, NULL);
-
-static ssize_t msm_batt_batt_volt_raw_show(struct device* dev, struct device_attribute* attr, char* buf)
-{
-	batt_volt_raw = lge_get_batt_volt_raw();
-	return sprintf(buf,"%d\n", batt_volt_raw);
-}
-static DEVICE_ATTR(batt_volt_raw, S_IRUGO, msm_batt_batt_volt_raw_show, NULL);
-
-static struct attribute* dev_attrs_lge_batt_info[] = {
-	&dev_attr_batt_volt.attr,
-	&dev_attr_chg_therm.attr,
-	&dev_attr_pcb_version.attr,
-	&dev_attr_chg_curr_volt.attr,
-	&dev_attr_batt_therm.attr,
-	&dev_attr_batt_volt_raw.attr,	
-	NULL,
-};
-
-static struct attribute_group dev_attr_grp_lge_batt_info = {
-	.attrs = dev_attrs_lge_batt_info,
-};
-
 #endif
 
 static int __devinit msm_batt_probe(struct platform_device *pdev)
@@ -1865,7 +1711,6 @@ static int __devinit msm_batt_probe(struct platform_device *pdev)
 			__func__, rc);
 		msm_batt_cleanup();
 		return rc;
-
 	}
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -1887,19 +1732,11 @@ static int __devinit msm_batt_probe(struct platform_device *pdev)
 			"%s: msm_batt_cleanup  failed rc=%d\n", __func__, rc);
 	} else {
 		pif_value = lge_get_pif_info();
-		//mdelay(10);
-		//low_power_mode = lge_get_lpm_info();
+		mdelay(10);
+		low_power_mode = lge_get_lpm_info();
 	}
 
 	dev_info(&pdev->dev, "%s : Using PIF ZIG (%d)\n", __func__, pif_value);
-#endif
-	
-#ifdef CONFIG_MACH_LGE
-		rc = sysfs_create_group(&pdev->dev.kobj, &dev_attr_grp_lge_batt_info);
-		if(rc < 0) {
-			dev_err(&pdev->dev,
-				"%s: fail to create sysfs for lge batt info rc=%d\n", __func__, rc);
-		}
 #endif
 
 	return 0;
@@ -1911,10 +1748,6 @@ static int __devexit msm_batt_remove(struct platform_device *pdev)
 	
 #if defined(CONFIG_LGE_DETECT_PIF_PATCH)
 	sysfs_remove_group(&pdev->dev.kobj,&dev_attr_grp);
-#endif
-
-#ifdef CONFIG_MACH_LGE
-	sysfs_remove_group(&pdev->dev.kobj,&dev_attr_grp_lge_batt_info);
 #endif
 
 	rc = msm_batt_cleanup();
@@ -1930,7 +1763,7 @@ static int __devexit msm_batt_remove(struct platform_device *pdev)
 static struct platform_driver msm_batt_driver = {
 	.probe = msm_batt_probe,
 	.remove = __devexit_p(msm_batt_remove),
-#if defined CONFIG_MACH_LGE && defined CONFIG_PM
+#if defined CONFIG_MACH_MSM7X27_THUNDERG && defined CONFIG_PM
 	.suspend = msm_batt_suspend,
 	.resume = msm_batt_resume,
 #endif
