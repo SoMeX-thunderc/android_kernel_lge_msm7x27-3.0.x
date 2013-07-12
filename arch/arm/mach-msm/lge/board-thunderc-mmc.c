@@ -41,13 +41,6 @@ static void sdcc_gpio_init(void)
 	if (rc)
 		printk(KERN_ERR "%s: Failed to configure GPIO %d\n",
 					__func__, rc);
-	if (gpio_request(GPIO_MMC_COVER_DETECT, "sdc1_status_socket_irq"))
-		pr_err("failed to request gpio sdc1_status_irq\n");
-	rc = gpio_tlmm_config(GPIO_CFG(GPIO_MMC_COVER_DETECT, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP,
-								   GPIO_CFG_2MA), GPIO_CFG_ENABLE);
-	if (rc)
-		printk(KERN_ERR "%s: Failed to configure GPIO %d\n",
-					__func__, rc);
 #endif
 	/* SDC1 GPIOs */
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
